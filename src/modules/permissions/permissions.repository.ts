@@ -1,24 +1,34 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 
-import type { AppDatabase } from '../../database/database.module';
-import { DRIZZLE } from '../../database/database.tokens';
-import { Permission, permissions } from '../../database/schema';
+import type { DbType } from '../../database/database.module';
+import { permissions } from '../../database/schema';
+import { CreatePermissionDto } from './dto/create-permission.dto';
 
 @Injectable()
 export class PermissionsRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: AppDatabase) {}
+  constructor(@Inject('DB') private readonly db: DbType) {}
 
-  async findAll(): Promise<Permission[]> {
+  async create(dto: CreatePermissionDto) {
+    const [permission] = await this.db
+      .insert(permissions)
+      .values(dto)
+      .returning();
+
+    return permission;
+  }
+
+  async findAll() {
     return this.db.select().from(permissions);
   }
 
-  async findByName(name: string): Promise<Permission | null> {
+  async findByName(name: string) {
     const [permission] = await this.db
       .select()
       .from(permissions)
       .where(eq(permissions.name, name))
       .limit(1);
+
     return permission ?? null;
   }
 }

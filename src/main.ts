@@ -14,18 +14,25 @@ import { AppLoggerService } from './common/logger/app-logger.service';
 import { LogCategory } from './common/logger/log-category.enum';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+  });
+
   const configService = app.get(ConfigService);
   const appLogger = app.get(AppLoggerService);
 
   app.useLogger(app.get(Logger));
   app.use(helmet());
+
   app.enableCors({
     origin: configService.get<string>('app.corsOrigin') ?? true,
     credentials: true,
   });
 
-  app.setGlobalPrefix(API_PREFIX, { exclude: ['health'] });
+  app.setGlobalPrefix(API_PREFIX, {
+    exclude: ['health'],
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -33,7 +40,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
   app.useGlobalFilters(app.get(HttpExceptionFilter));
+
   app.useGlobalInterceptors(
     app.get(LoggingInterceptor),
     app.get(ResponseInterceptor),
@@ -41,15 +50,22 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('OpenBoxes Supply Chain API')
-    .setDescription('Supply chain management backend API')
+    .setDescription('OpenBoxes Backend APIs')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
+
+  const document = SwaggerModule.createDocument(
+    app,
+    swaggerConfig,
+  );
+
   SwaggerModule.setup('api/docs', app, document);
 
   const port = configService.getOrThrow<number>('app.port');
+
   await app.listen(port);
+
   appLogger.info(
     LogCategory.APPLICATION,
     {
@@ -57,7 +73,7 @@ async function bootstrap() {
       port,
       nodeEnv: configService.get<string>('app.nodeEnv'),
     },
-    'Application started',
+    `Server running on port ${port}`,
   );
 }
 

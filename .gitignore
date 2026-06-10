@@ -6,6 +6,7 @@
 # Logs
 logs/*
 !logs/.gitkeep
+!logs/**/.gitkeep
 *.log
 npm-debug.log*
 pnpm-debug.log*

@@ -1,23 +1,46 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 
-import { Roles } from '../../common/decorators/roles.decorator';
-import { RoleName } from '../../common/enums/role.enum';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { CreateRoleDto } from './dto/create-role.dto';
+import { UpdateRoleDto } from './dto/update-role.dto';
 import { RolesService } from './roles.service';
 
-@ApiTags('Roles')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('roles')
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
+  @Post()
+  create(@Body() dto: CreateRoleDto) {
+    return this.rolesService.create(dto);
+  }
+
   @Get()
-  @Roles(RoleName.ADMIN)
-  @ApiOkResponse({ description: 'Roles retrieved successfully' })
   findAll() {
     return this.rolesService.findAll();
+  }
+
+  @Get(':uid')
+  findOne(@Param('uid') uid: string) {
+    return this.rolesService.findOne(uid);
+  }
+
+  @Patch(':uid')
+  update(
+    @Param('uid') uid: string,
+    @Body() dto: UpdateRoleDto,
+  ) {
+    return this.rolesService.update(uid, dto);
+  }
+
+  @Delete(':uid')
+  remove(@Param('uid') uid: string) {
+    return this.rolesService.remove(uid);
   }
 }

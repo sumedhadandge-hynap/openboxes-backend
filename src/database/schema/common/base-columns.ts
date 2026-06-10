@@ -1,17 +1,32 @@
-import { boolean, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  integer,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 export const baseColumns = {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: integer('id')
+    .primaryKey()
+    .generatedAlwaysAsIdentity(),
 
-  isActive: boolean('is_active').notNull().default(true),
+  uid: uuid('uid')
+    .defaultRandom()
+    .notNull(),
 
-  isDeleted: boolean('is_deleted').notNull().default(false),
+  isActive: boolean('is_active')
+    .notNull()
+    .default(true),
 
-  createdBy: uuid('created_by'),
+  isDeleted: boolean('is_deleted')
+    .notNull()
+    .default(false),
 
-  updatedBy: uuid('updated_by'),
+  createdBy: integer('created_by'),
 
-  deletedBy: uuid('deleted_by'),
+  updatedBy: integer('updated_by'),
+
+  deletedBy: integer('deleted_by'),
 
   createdAt: timestamp('created_at', {
     withTimezone: true,

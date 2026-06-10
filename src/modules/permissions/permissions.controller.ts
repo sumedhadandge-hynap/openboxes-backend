@@ -1,22 +1,17 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-
-import { Roles } from '../../common/decorators/roles.decorator';
-import { RoleName } from '../../common/enums/role.enum';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { PermissionsService } from './permissions.service';
+import { CreatePermissionDto } from './dto/create-permission.dto';
 
-@ApiTags('Permissions')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Controller('permissions')
+@Controller('api/permissions')
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
+  @Post()
+  create(@Body() dto: CreatePermissionDto) {
+    return this.permissionsService.create(dto);
+  }
+
   @Get()
-  @Roles(RoleName.ADMIN)
-  @ApiOkResponse({ description: 'Permissions retrieved successfully' })
   findAll() {
     return this.permissionsService.findAll();
   }

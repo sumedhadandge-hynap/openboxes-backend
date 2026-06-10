@@ -1,65 +1,74 @@
-import { Global, Inject, Module, OnApplicationShutdown } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Logger,
+  Module,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
 
-import { AppLoggerService } from '../common/logger/app-logger.service';
-import { DatabaseService } from './database.service';
-import { DRIZZLE, POSTGRES_CLIENT } from './database.tokens';
-import * as schema from './schema';
+import * as dbSchema from './schema';
 
-export type AppDatabase = PostgresJsDatabase<typeof schema>;
-
-class DatabaseShutdownService implements OnApplicationShutdown {
-  constructor(
-    @Inject(POSTGRES_CLIENT)
-    private readonly client: postgres.Sql,
-  ) {}
-
-  async onApplicationShutdown() {
-    await this.client.end({ timeout: 5 });
-  }
-}
+export type DbType = NodePgDatabase<typeof dbSchema>;
 
 @Global()
 @Module({
   providers: [
     {
-      provide: POSTGRES_CLIENT,
+      provide: 'DB_POOL',
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) =>
-        postgres(configService.getOrThrow<string>('database.url'), {
-          prepare: false,
-        }),
-    },
-    {
-      provide: DRIZZLE,
-      inject: [POSTGRES_CLIENT, ConfigService, AppLoggerService],
-      useFactory: (
-        client: postgres.Sql,
+      useFactory: async (
         configService: ConfigService,
-        logger: AppLoggerService,
-      ) =>
-        drizzle(client, {
-          schema,
-          logger: {
-            logQuery: (query, params) => {
-              logger.database(
-                {
-                  event: 'drizzle_query',
-                  query,
-                  paramsCount: params.length,
-                  nodeEnv: configService.get<string>('app.nodeEnv'),
-                },
-                'Drizzle query executed',
-              );
-            },
-          },
-        }),
+      ): Promise<Pool> => {
+        const logger = new Logger('DatabaseModule');
+
+        const connectionString =
+          configService.get<string>('database.url') ||
+          configService.get<string>('DATABASE_URL');
+
+        if (!connectionString) {
+          throw new Error('DATABASE_URL not found');
+        }
+
+        const pool = new Pool({
+          connectionString,
+          max: 10,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 5000,
+        });
+
+        await pool.query('SELECT 1');
+
+        logger.log('Database connected successfully');
+
+        return pool;
+      },
     },
-    DatabaseShutdownService,
-    DatabaseService,
+
+    {
+      provide: 'DB',
+      inject: ['DB_POOL'],
+      useFactory: (pool: Pool): DbType => {
+        return drizzle(pool, {
+          schema: dbSchema,
+        });
+      },
+    },
   ],
-  exports: [DRIZZLE, DatabaseService],
+  exports: ['DB', 'DB_POOL'],
 })
-export class DatabaseModule {}
+export class DatabaseModule implements OnModuleDestroy {
+  private readonly logger = new Logger(DatabaseModule.name);
+
+  constructor(
+    @Inject('DB_POOL')
+    private readonly dbPool: Pool,
+  ) {}
+
+  async onModuleDestroy() {
+    await this.dbPool.end();
+    this.logger.log('Database pool closed');
+  }
+}

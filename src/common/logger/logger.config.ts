@@ -5,10 +5,11 @@ export function createLoggerConfig(logLevel: string, nodeEnv: string): Params {
   return {
     pinoHttp: {
       level: logLevel,
+      autoLogging: false,
       timestamp: true,
       base: {
         service: 'openboxes-backend',
-        category: 'api',
+        category: 'application',
       },
       transport:
         nodeEnv === 'development'
@@ -16,7 +17,12 @@ export function createLoggerConfig(logLevel: string, nodeEnv: string): Params {
           : {
               target: 'pino-roll',
               options: {
-                file: join(process.cwd(), 'logs', 'api.log'),
+                file: join(
+                  process.cwd(),
+                  'logs',
+                  'application',
+                  'application.log',
+                ),
                 frequency: 'daily',
                 mkdir: true,
               },

@@ -10,11 +10,10 @@ import databaseConfig from './config/database.config';
 import { validateEnvironment } from './config/env.validation';
 import jwtConfig from './config/jwt.config';
 import { DatabaseModule } from './database/database.module';
-import { AuthModule } from './modules/auth/auth.module';
-import { HealthModule } from './modules/health/health.module';
-import { PermissionsModule } from './modules/permissions/permissions.module';
+
 import { RolesModule } from './modules/roles/roles.module';
-import { UsersModule } from './modules/users/users.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 @Module({
   imports: [
@@ -24,6 +23,7 @@ import { UsersModule } from './modules/users/users.module';
       load: [appConfig, databaseConfig, jwtConfig],
       validate: validateEnvironment,
     }),
+
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>
@@ -32,14 +32,23 @@ import { UsersModule } from './modules/users/users.module';
           configService.getOrThrow<string>('app.nodeEnv'),
         ),
     }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
+
     AppLoggerModule,
     DatabaseModule,
-    AuthModule,
-    UsersModule,
+
     RolesModule,
     PermissionsModule,
-    HealthModule,
+  ],
+
+    providers: [
+    HttpExceptionFilter,
   ],
 })
 export class AppModule {}

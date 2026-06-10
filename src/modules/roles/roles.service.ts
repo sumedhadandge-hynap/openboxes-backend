@@ -1,27 +1,88 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
-import { Role } from '../../database/schema';
+import { CreateRoleDto } from './dto/create-role.dto';
+import { UpdateRoleDto } from './dto/update-role.dto';
 import { RolesRepository } from './roles.repository';
 
 @Injectable()
 export class RolesService {
   constructor(private readonly rolesRepository: RolesRepository) {}
 
-  async findAll() {
-    const roles = await this.rolesRepository.findAll();
-    return { message: 'Roles retrieved successfully', data: roles };
-  }
+  async create(dto: CreateRoleDto) {
+    const existing = await this.rolesRepository.findByName(dto.name);
 
-  async findByName(name: string): Promise<Role | null> {
-    return this.rolesRepository.findByName(name);
-  }
-
-  async createIfMissing(name: string, description: string): Promise<Role> {
-    const existingRole = await this.findByName(name);
-    if (existingRole) {
-      return existingRole;
+    if (existing) {
+      throw new BadRequestException('Role already exists');
     }
 
-    return this.rolesRepository.create({ name, description });
+    const role = await this.rolesRepository.create(dto);
+
+    return {
+      message: 'Role created successfully',
+      data: this.toResponse(role),
+    };
+  }
+
+  async findAll() {
+    const roles = await this.rolesRepository.findAll();
+
+    return {
+      message: 'Roles fetched successfully',
+      data: roles.map((role) => this.toResponse(role)),
+    };
+  }
+
+  async findOne(uid: string) {
+    const role = await this.rolesRepository.findByUid(uid);
+
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+
+    return {
+      message: 'Role fetched successfully',
+      data: this.toResponse(role),
+    };
+  }
+
+  async update(uid: string, dto: UpdateRoleDto) {
+    const role = await this.rolesRepository.updateByUid(uid, dto);
+
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+
+    return {
+      message: 'Role updated successfully',
+      data: this.toResponse(role),
+    };
+  }
+
+  async remove(uid: string) {
+    const role = await this.rolesRepository.deleteByUid(uid);
+
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+
+    return {
+      message: 'Role deleted successfully',
+      data: null,
+    };
+  }
+
+  private toResponse(role: any) {
+    return {
+      uid: role.uid,
+      name: role.name,
+      description: role.description,
+      isActive: role.isActive,
+      createdAt: role.createdAt,
+      updatedAt: role.updatedAt,
+    };
   }
 }

@@ -8,45 +8,82 @@ type LogPayload = Record<string, unknown>;
 
 @Injectable()
 export class AppLoggerService implements OnModuleDestroy {
-  private readonly loggers = new Map<LogCategory, Logger>();
-
-  constructor() {
-    for (const category of Object.values(LogCategory)) {
-      this.loggers.set(category, this.createCategoryLogger(category));
-    }
-  }
+  private readonly loggers = {
+    application: this.createLogger(
+      join('logs', 'application', 'application.log'),
+    ),
+    applicationError: this.createLogger(
+      join('logs', 'application', 'application-error.log'),
+    ),
+    api: this.createLogger(join('logs', 'api', 'api.log')),
+    apiError: this.createLogger(join('logs', 'api', 'api-error.log')),
+    auth: this.createLogger(join('logs', 'auth', 'auth.log')),
+    authSecurity: this.createLogger(join('logs', 'auth', 'security.log')),
+    database: this.createLogger(join('logs', 'database', 'queries.log')),
+    databaseError: this.createLogger(join('logs', 'database', 'db-errors.log')),
+    audit: this.createLogger(join('logs', 'audit', 'audit.log')),
+    exceptions: this.createLogger(join('logs', 'exceptions', 'exceptions.log')),
+  };
 
   info(category: LogCategory, payload: LogPayload, message: string) {
-    this.getLogger(category).info(payload, message);
+    this.baseLogger(category).info(payload, message);
   }
 
   warn(category: LogCategory, payload: LogPayload, message: string) {
-    this.getLogger(category).warn(payload, message);
+    this.baseLogger(category).warn(payload, message);
+    if (category === LogCategory.AUTH) {
+      this.loggers.authSecurity.warn(payload, message);
+    }
   }
 
   error(category: LogCategory, payload: LogPayload, message: string) {
-    this.getLogger(category).error(payload, message);
+    this.baseLogger(category).error(payload, message);
+    this.errorLogger(category).error(payload, message);
   }
 
   audit(payload: LogPayload, message: string) {
-    this.info(LogCategory.AUDIT, payload, message);
+    this.loggers.audit.info(payload, message);
   }
 
   database(payload: LogPayload, message: string) {
-    this.info(LogCategory.DATABASE, payload, message);
+    this.loggers.database.info(payload, message);
+  }
+
+  databaseError(payload: LogPayload, message: string) {
+    this.loggers.databaseError.error(payload, message);
   }
 
   auth(payload: LogPayload, message: string) {
-    this.info(LogCategory.AUTH, payload, message);
+    this.loggers.auth.info(payload, message);
+  }
+
+  authSecurity(payload: LogPayload, message: string) {
+    this.loggers.authSecurity.warn(payload, message);
   }
 
   exception(payload: LogPayload, message: string) {
-    this.error(LogCategory.EXCEPTIONS, payload, message);
+    this.loggers.exceptions.error(payload, message);
+  }
+
+  application(payload: LogPayload, message: string) {
+    this.loggers.application.info(payload, message);
+  }
+
+  applicationError(payload: LogPayload, message: string) {
+    this.loggers.applicationError.error(payload, message);
+  }
+
+  api(payload: LogPayload, message: string) {
+    this.loggers.api.info(payload, message);
+  }
+
+  apiError(payload: LogPayload, message: string) {
+    this.loggers.apiError.error(payload, message);
   }
 
   async onModuleDestroy() {
     await Promise.all(
-      [...this.loggers.values()].map(
+      Object.values(this.loggers).map(
         (logger) =>
           new Promise<void>((resolve) => {
             logger.flush();
@@ -56,20 +93,49 @@ export class AppLoggerService implements OnModuleDestroy {
     );
   }
 
-  private getLogger(category: LogCategory): Logger {
-    const logger = this.loggers.get(category);
-    if (!logger) {
-      throw new Error(`Logger category is not configured: ${category}`);
+  private baseLogger(category: LogCategory): Logger {
+    switch (category) {
+      case LogCategory.APPLICATION:
+        return this.loggers.application;
+      case LogCategory.API:
+        return this.loggers.api;
+      case LogCategory.AUTH:
+        return this.loggers.auth;
+      case LogCategory.DATABASE:
+        return this.loggers.database;
+      case LogCategory.AUDIT:
+        return this.loggers.audit;
+      case LogCategory.EXCEPTIONS:
+        return this.loggers.exceptions;
+      default:
+        return this.loggers.application;
     }
-
-    return logger;
   }
 
-  private createCategoryLogger(category: LogCategory): Logger {
+  private errorLogger(category: LogCategory): Logger {
+    switch (category) {
+      case LogCategory.APPLICATION:
+        return this.loggers.applicationError;
+      case LogCategory.API:
+        return this.loggers.apiError;
+      case LogCategory.AUTH:
+        return this.loggers.authSecurity;
+      case LogCategory.DATABASE:
+        return this.loggers.databaseError;
+      case LogCategory.EXCEPTIONS:
+        return this.loggers.exceptions;
+      case LogCategory.AUDIT:
+        return this.loggers.audit;
+      default:
+        return this.loggers.applicationError;
+    }
+  }
+
+  private createLogger(filePath: string): Logger {
     const transport = pino.transport({
       target: 'pino-roll',
       options: {
-        file: join(process.cwd(), 'logs', `${category}.log`),
+        file: join(process.cwd(), filePath),
         frequency: 'daily',
         mkdir: true,
       },
@@ -80,7 +146,6 @@ export class AppLoggerService implements OnModuleDestroy {
         level: process.env.LOG_LEVEL ?? 'info',
         base: {
           service: 'openboxes-backend',
-          category,
         },
         timestamp: pino.stdTimeFunctions.isoTime,
         formatters: {
