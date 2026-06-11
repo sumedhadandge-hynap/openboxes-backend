@@ -14,6 +14,9 @@ import { DatabaseModule } from './database/database.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { UsersModule } from './modules/users/users.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -45,10 +48,15 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
     RolesModule,
     PermissionsModule,
+
+    AuditModule,
+
+    UsersModule,
+    AuthModule,
   ],
 
-    providers: [
+  providers: [
     HttpExceptionFilter,
   ],
 })
-export class AppModule {}
+export class AppModule { }

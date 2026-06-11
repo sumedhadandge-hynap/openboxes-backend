@@ -6,7 +6,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import { BCRYPT_SALT_ROUNDS } from '../src/common/constants/app.constant';
-import { roles, users } from '../src/database/schema';
+import { users } from '../src/database/schema';
 
 async function seedAdmin() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -17,38 +17,41 @@ async function seedAdmin() {
   }
 
   if (!adminPassword) {
-    throw new Error('DEFAULT_ADMIN_PASSWORD is required for admin seeding');
-  }
-
-  const client = postgres(databaseUrl, { prepare: false });
-  const db = drizzle(client);
-
-  const [adminRole] = await db
-    .select()
-    .from(roles)
-    .where(eq(roles.name, 'ADMIN'))
-    .limit(1);
-  if (!adminRole) {
     throw new Error(
-      'ADMIN role is missing. Run npm run db:seed after migrations.',
+      'DEFAULT_ADMIN_PASSWORD is required',
     );
   }
 
+  const client = postgres(databaseUrl, {
+    prepare: false,
+  });
+
+  const db = drizzle(client);
+
   const email = 'admin@openboxes.com';
+
   const [existingAdmin] = await db
     .select()
     .from(users)
     .where(eq(users.email, email))
     .limit(1);
+
   if (!existingAdmin) {
+    const passwordHash = await bcrypt.hash(
+      adminPassword,
+      BCRYPT_SALT_ROUNDS,
+    );
+
     await db.insert(users).values({
-      email,
-      passwordHash: await bcrypt.hash(adminPassword, BCRYPT_SALT_ROUNDS),
-      firstName: 'OpenBoxes',
+      firstName: 'System',
       lastName: 'Admin',
-      isActive: true,
-      roleId: adminRole.id,
+      email,
+      passwordHash,
     });
+
+    console.log('Admin user created');
+  } else {
+    console.log('Admin user already exists');
   }
 
   await client.end();

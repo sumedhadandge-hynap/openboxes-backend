@@ -3,14 +3,8 @@ import 'dotenv/config';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
-import { DEFAULT_ROLES } from '../src/common/constants/app.constant';
+import { DEFAULT_ROLE_DEFINITIONS } from '../src/common/constants/app.constant';
 import { roles } from '../src/database/schema';
-
-const descriptions: Record<string, string> = {
-  ADMIN: 'Full system administration access',
-  MANAGER: 'Operational management access',
-  USER: 'Standard application access',
-};
 
 async function seedRoles() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -23,12 +17,7 @@ async function seedRoles() {
 
   await db
     .insert(roles)
-    .values(
-      DEFAULT_ROLES.map((name) => ({
-        name,
-        description: descriptions[name],
-      })),
-    )
+    .values(DEFAULT_ROLE_DEFINITIONS)
     .onConflictDoNothing();
 
   await client.end();

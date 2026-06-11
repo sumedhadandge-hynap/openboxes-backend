@@ -6,12 +6,12 @@ import {
   permissions,
   rolePermissions,
   refreshTokens,
+  auditLogs,
 } from '../schema';
 
 export const rolesRelations = relations(
   roles,
   ({ many }) => ({
-    users: many(users),
     rolePermissions: many(rolePermissions),
   }),
 );
@@ -40,13 +40,9 @@ export const rolePermissionsRelations = relations(
 
 export const usersRelations = relations(
   users,
-  ({ one, many }) => ({
-    role: one(roles, {
-      fields: [users.roleId],
-      references: [roles.id],
-    }),
-
+  ({ many }) => ({
     refreshTokens: many(refreshTokens),
+    auditLogs: many(auditLogs),
   }),
 );
 

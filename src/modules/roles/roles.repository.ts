@@ -1,14 +1,21 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import type { DbType } from '../../database/database.module';
-import { roles } from '../../database/schema';
+import { permissions, rolePermissions, roles } from '../../database/schema';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { DatabaseService } from 'src/database/database.service';
 
 @Injectable()
 export class RolesRepository {
-  constructor(@Inject('DB') private readonly db: DbType) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+  ) { }
+
+  private get db() {
+    return this.databaseService.db;
+  }
 
   async create(dto: CreateRoleDto) {
     const [role] = await this.db.insert(roles).values(dto).returning();
@@ -64,5 +71,79 @@ export class RolesRepository {
       .returning();
 
     return role ?? null;
+  }
+
+  async findPermissionByUid(
+    uid: string,
+  ) {
+    const result = await this.db
+      .select()
+      .from(permissions)
+      .where(eq(permissions.uid, uid));
+
+    return result[0] ?? null;
+  }
+
+  async assignPermission(
+    roleId: number,
+    permissionId: number,
+  ) {
+    const [record] = await this.db
+      .insert(rolePermissions)
+      .values({
+        roleId,
+        permissionId,
+      })
+      .returning();
+
+    return record;
+  }
+
+
+
+  async getRolePermissions(
+    roleId: number,
+  ) {
+    return this.db
+      .select({
+        uid: permissions.uid,
+        name: permissions.name,
+        description:
+          permissions.description,
+      })
+      .from(rolePermissions)
+      .innerJoin(
+        permissions,
+        eq(
+          rolePermissions.permissionId,
+          permissions.id,
+        ),
+      )
+      .where(
+        eq(
+          rolePermissions.roleId,
+          roleId,
+        ),
+      );
+  }
+
+  async removePermission(
+    roleId: number,
+    permissionId: number,
+  ) {
+    return this.db
+      .delete(rolePermissions)
+      .where(
+        and(
+          eq(
+            rolePermissions.roleId,
+            roleId,
+          ),
+          eq(
+            rolePermissions.permissionId,
+            permissionId,
+          ),
+        ),
+      );
   }
 }

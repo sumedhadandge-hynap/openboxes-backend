@@ -1,74 +1,47 @@
-import {
-  Global,
-  Inject,
-  Logger,
-  Module,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
 
-import * as dbSchema from './schema';
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 
-export type DbType = NodePgDatabase<typeof dbSchema>;
+import * as schema from './schema';
+
+import { DatabaseService } from './database.service';
+import { DRIZZLE, POSTGRES_CLIENT } from './database.tokens';
+
+const connectionFactory = (config: ConfigService) =>
+  postgres(
+    config.getOrThrow<string>('database.url'),
+  );
+
+export type DbType = ReturnType<
+  typeof drizzle<typeof schema>
+>;
 
 @Global()
 @Module({
   providers: [
     {
-      provide: 'DB_POOL',
+      provide: POSTGRES_CLIENT,
       inject: [ConfigService],
-      useFactory: async (
-        configService: ConfigService,
-      ): Promise<Pool> => {
-        const logger = new Logger('DatabaseModule');
-
-        const connectionString =
-          configService.get<string>('database.url') ||
-          configService.get<string>('DATABASE_URL');
-
-        if (!connectionString) {
-          throw new Error('DATABASE_URL not found');
-        }
-
-        const pool = new Pool({
-          connectionString,
-          max: 10,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 5000,
-        });
-
-        await pool.query('SELECT 1');
-
-        logger.log('Database connected successfully');
-
-        return pool;
-      },
+      useFactory: connectionFactory,
     },
 
     {
-      provide: 'DB',
-      inject: ['DB_POOL'],
-      useFactory: (pool: Pool): DbType => {
-        return drizzle(pool, {
-          schema: dbSchema,
-        });
-      },
+      provide: DRIZZLE,
+      inject: [POSTGRES_CLIENT],
+      useFactory: (client: postgres.Sql) =>
+        drizzle(client, {
+          schema,
+        }),
     },
+
+    DatabaseService,
   ],
-  exports: ['DB', 'DB_POOL'],
+
+  exports: [
+    DRIZZLE,
+    DatabaseService,
+  ],
 })
-export class DatabaseModule implements OnModuleDestroy {
-  private readonly logger = new Logger(DatabaseModule.name);
-
-  constructor(
-    @Inject('DB_POOL')
-    private readonly dbPool: Pool,
-  ) {}
-
-  async onModuleDestroy() {
-    await this.dbPool.end();
-    this.logger.log('Database pool closed');
-  }
-}
+export class DatabaseModule {}

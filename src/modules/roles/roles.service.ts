@@ -7,10 +7,11 @@ import {
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RolesRepository } from './roles.repository';
+import { AssignPermissionDto } from './dto/assign-permission.dto';
 
 @Injectable()
 export class RolesService {
-  constructor(private readonly rolesRepository: RolesRepository) {}
+  constructor(private readonly rolesRepository: RolesRepository) { }
 
   async create(dto: CreateRoleDto) {
     const existing = await this.rolesRepository.findByName(dto.name);
@@ -75,10 +76,112 @@ export class RolesService {
     };
   }
 
+
+  async assignPermission(
+    roleUid: string,
+    dto: AssignPermissionDto,
+  ) {
+    const role =
+      await this.rolesRepository.findByUid(
+        roleUid,
+      );
+
+    if (!role) {
+      throw new NotFoundException(
+        'Role not found',
+      );
+    }
+
+    const permission =
+      await this.rolesRepository.findPermissionByUid(
+        dto.permissionUid,
+      );
+
+    if (!permission) {
+      throw new NotFoundException(
+        'Permission not found',
+      );
+    }
+
+    await this.rolesRepository.assignPermission(
+      role.id,
+      permission.id,
+    );
+
+    return {
+      message:
+        'Permission assigned successfully',
+    };
+  }
+
+  async getPermissions(
+    roleUid: string,
+  ) {
+    const role =
+      await this.rolesRepository.findByUid(
+        roleUid,
+      );
+
+    if (!role) {
+      throw new NotFoundException(
+        'Role not found',
+      );
+    }
+
+    const permissions =
+      await this.rolesRepository.getRolePermissions(
+        role.id,
+      );
+
+    return {
+      message:
+        'Permissions fetched successfully',
+      data: permissions,
+    };
+  }
+
+  async removePermission(
+    roleUid: string,
+    permissionUid: string,
+  ) {
+    const role =
+      await this.rolesRepository.findByUid(
+        roleUid,
+      );
+
+    if (!role) {
+      throw new NotFoundException(
+        'Role not found',
+      );
+    }
+
+    const permission =
+      await this.rolesRepository.findPermissionByUid(
+        permissionUid,
+      );
+
+    if (!permission) {
+      throw new NotFoundException(
+        'Permission not found',
+      );
+    }
+
+    await this.rolesRepository.removePermission(
+      role.id,
+      permission.id,
+    );
+
+    return {
+      message:
+        'Permission removed successfully',
+    };
+  }
+
   private toResponse(role: any) {
     return {
       uid: role.uid,
       name: role.name,
+      roleType: role.roleType,
       description: role.description,
       isActive: role.isActive,
       createdAt: role.createdAt,
