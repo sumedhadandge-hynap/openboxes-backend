@@ -5,9 +5,13 @@ import { UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
 
 import { AuditModule } from '../audit/audit.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [AuditModule],
+    imports: [
+    AuditModule,
+    AuthModule, 
+  ],
 
   controllers: [UsersController],
 

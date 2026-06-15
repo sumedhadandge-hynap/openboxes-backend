@@ -2,19 +2,15 @@ import {
     Injectable,
     UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 
 import * as bcrypt from 'bcrypt';
-
-import {
-    JwtService,
-    type JwtSignOptions,
-} from '@nestjs/jwt';
 
 import { AuthRepository } from './auth.repository';
 
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
@@ -32,9 +28,11 @@ export class AuthService {
         ) as JwtSignOptions['expiresIn'];
     }
 
-    async login(
-        dto: LoginDto,
-    ) {
+    // =====================================================
+    // LOGIN
+    // =====================================================
+
+    async login(dto: LoginDto) {
         const user =
             await this.authRepository.findUserByEmail(
                 dto.email,
@@ -58,9 +56,20 @@ export class AuthService {
             );
         }
 
+        const roles =
+            await this.authRepository.findUserRoles(
+                user.id,
+            );
+
+        const permissions =
+            await this.authRepository.findUserPermissions(
+                user.id,
+            );
+
         const payload = {
             sub: user.uid,
             email: user.email,
+            roles: roles.map((role) => role.name),
         };
 
         const accessToken =
@@ -71,10 +80,9 @@ export class AuthService {
                         this.configService.getOrThrow<string>(
                             'jwt.accessSecret',
                         ),
-                    expiresIn:
-                        this.getJwtExpiresIn(
-                            'jwt.accessExpiresIn',
-                        ),
+                    expiresIn: this.getJwtExpiresIn(
+                        'jwt.accessExpiresIn',
+                    ),
                 },
             );
 
@@ -86,30 +94,62 @@ export class AuthService {
                         this.configService.getOrThrow<string>(
                             'jwt.refreshSecret',
                         ),
-                    expiresIn:
-                        this.getJwtExpiresIn(
-                            'jwt.refreshExpiresIn',
-                        ),
+                    expiresIn: this.getJwtExpiresIn(
+                        'jwt.refreshExpiresIn',
+                    ),
                 },
             );
+
+        // Store hashed refresh token
+
+        const refreshHash =
+            await bcrypt.hash(
+                refreshToken,
+                10,
+            );
+
+        const expiresAt = new Date();
+
+        expiresAt.setDate(
+            expiresAt.getDate() + 30,
+        );
+
+        await this.authRepository.deleteRefreshTokensByUser(
+            user.id,
+        );
+
+        await this.authRepository.createRefreshToken(
+            user.id,
+            refreshHash,
+            expiresAt,
+        );
 
         return {
             message: 'Login successful',
             data: {
                 accessToken,
                 refreshToken,
+
                 user: {
                     uid: user.uid,
                     firstName: user.firstName,
                     lastName: user.lastName,
                     email: user.email,
                 },
+
+                roles,
+
+                permissions,
             },
         };
     }
 
 
-    //
+
+    // =====================================================
+    // REFRESH TOKEN
+    // =====================================================
+
     async refresh(
         dto: RefreshTokenDto,
     ) {
@@ -124,46 +164,235 @@ export class AuthService {
                 },
             );
 
+        const user =
+            await this.authRepository.findUserByUid(
+                payload.sub,
+            );
+
+        if (!user) {
+            throw new UnauthorizedException();
+        }
+
+        const roles =
+            await this.authRepository.findUserRoles(
+                user.id,
+            );
+
+        const permissions =
+            await this.authRepository.findUserPermissions(
+                user.id,
+            );
+
+        const storedTokens =
+            await this.authRepository.findRefreshTokensByUser(
+                user.id,
+            );
+
+        let matchedToken:
+            Awaited<
+                ReturnType<
+                    AuthRepository['findRefreshTokensByUser']
+                >
+            >[number]
+            | null = null;
+
+        for (const token of storedTokens) {
+            const valid = await bcrypt.compare(
+                dto.refreshToken,
+                token.tokenHash,
+            );
+
+            if (valid) {
+                matchedToken = token;
+                break;
+            }
+        }
+
+        if (!matchedToken) {
+            throw new UnauthorizedException(
+                'Invalid Refresh Token',
+            );
+        }
+
+        if (!matchedToken) {
+            throw new UnauthorizedException(
+                'Invalid Refresh Token',
+            );
+        }
+
+        await this.authRepository.deleteRefreshTokensByUser(
+            user.id,
+        );
+
+        const newPayload = {
+            sub: user.uid,
+            email: user.email,
+            roles: roles.map((r) => r.name),
+        };
+
         const accessToken =
             await this.jwtService.signAsync(
-                {
-                    sub: payload.sub,
-                    uid: payload.uid,
-                    email: payload.email,
-                },
+                newPayload,
                 {
                     secret:
                         this.configService.getOrThrow<string>(
                             'jwt.accessSecret',
                         ),
-                    expiresIn:
-                        this.getJwtExpiresIn(
-                            'jwt.accessExpiresIn',
-                        ),
+                    expiresIn: this.getJwtExpiresIn(
+                        'jwt.accessExpiresIn',
+                    ),
                 },
             );
 
+        const refreshToken =
+            await this.jwtService.signAsync(
+                newPayload,
+                {
+                    secret:
+                        this.configService.getOrThrow<string>(
+                            'jwt.refreshSecret',
+                        ),
+                    expiresIn: this.getJwtExpiresIn(
+                        'jwt.refreshExpiresIn',
+                    ),
+                },
+            );
+
+        const refreshHash =
+            await bcrypt.hash(
+                refreshToken,
+                10,
+            );
+
+        const expiresAt = new Date();
+
+        expiresAt.setDate(
+            expiresAt.getDate() + 30,
+        );
+
+        await this.authRepository.createRefreshToken(
+            user.id,
+            refreshHash,
+            expiresAt,
+        );
+
         return {
-            message:
-                'Token refreshed successfully',
+            message: 'Token refreshed successfully',
             data: {
                 accessToken,
+                refreshToken,
+                user: {
+                    uid: user.uid,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    email: user.email,
+                },
+                roles,
+                permissions,
+            },
+        };
+    }
+
+    // =====================================================
+    // LOGOUT
+    // =====================================================
+
+    async logout(
+        dto: RefreshTokenDto,
+    ) {
+        let payload: any;
+
+        try {
+            payload = await this.jwtService.verifyAsync(
+                dto.refreshToken,
+                {
+                    secret:
+                        this.configService.getOrThrow<string>(
+                            'jwt.refreshSecret',
+                        ),
+                },
+            );
+        } catch {
+            throw new UnauthorizedException(
+                'Invalid refresh token',
+            );
+        }
+
+        const user =
+            await this.authRepository.findUserByUid(
+                payload.sub,
+            );
+
+        if (!user) {
+            throw new UnauthorizedException();
+        }
+
+        await this.authRepository.deleteRefreshTokensByUser(
+            user.id,
+        );
+
+        return {
+            message: 'Logged out successfully',
+        };
+    }
+
+
+
+
+    async me(userUid: string) {
+        const user =
+            await this.authRepository.findUserByUid(
+                userUid,
+            );
+
+        if (!user) {
+            throw new UnauthorizedException(
+                'User not found',
+            );
+        }
+
+        const currentUser =
+            await this.authRepository.getCurrentUser(
+                user.id,
+            );
+
+        const roles =
+            await this.authRepository.getCurrentUserRoles(
+                user.id,
+            );
+
+        const permissions =
+            await this.authRepository.getCurrentUserPermissions(
+                user.id,
+            );
+
+        return {
+            message: 'Current user fetched successfully',
+            data: {
+                ...currentUser,
+                roles,
+                permissions,
             },
         };
     }
 
 
-    async logout(
-        dto: RefreshTokenDto,
-    ) {
-        await this.authRepository
-            .deleteRefreshToken(
-                dto.refreshToken,
-            );
 
-        return {
-            message:
-                'Logged out successfully',
-        };
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }

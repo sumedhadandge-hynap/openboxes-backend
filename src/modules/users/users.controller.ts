@@ -14,6 +14,12 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
+import { UseGuards } from '@nestjs/common';
+
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+
 @Controller('users')
 export class UsersController {
   constructor(
@@ -28,10 +34,15 @@ export class UsersController {
     return this.usersService.create(dto);
   }
 
-  @Get()
-  findAll() {
-    return this.usersService.findAll();
-  }
+@Get()
+@UseGuards(
+  JwtAuthGuard,
+  RolesGuard,
+)
+@Roles('ADMIN')
+findAll() {
+  return this.usersService.findAll();
+}
 
   @Get(':uid')
   findOne(
