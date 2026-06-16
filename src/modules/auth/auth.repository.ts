@@ -11,6 +11,7 @@ import {
     userRoles,
     rolePermissions,
     refreshTokens,
+    passwordResetTokens,
 } from '../../database/schema';
 
 @Injectable()
@@ -149,6 +150,7 @@ export class AuthRepository {
                 firstName: users.firstName,
                 lastName: users.lastName,
                 email: users.email,
+                mobileNumber: users.mobileNumber,
                 isActive: users.isActive,
             })
             .from(users)
@@ -203,14 +205,113 @@ export class AuthRepository {
 
 
 
+    async updatePassword(
+        uid: string,
+        passwordHash: string,
+    ) {
+        const [user] = await this.db
+            .update(users)
+            .set({
+                passwordHash,
+                updatedAt: new Date(),
+            })
+            .where(eq(users.uid, uid))
+            .returning();
+
+        return user;
+    }
 
 
 
 
 
+    async createPasswordResetToken(
+        userId: number,
+        tokenHash: string,
+        expiresAt: Date,
+    ) {
+        const [token] = await this.db
+            .insert(passwordResetTokens)
+            .values({
+                userId,
+                tokenHash,
+                expiresAt,
+            })
+            .returning();
+
+        return token;
+    }
+
+    async findPasswordResetTokensByUser(
+        userId: number,
+    ) {
+        return this.db
+            .select()
+            .from(passwordResetTokens)
+            .where(
+                eq(
+                    passwordResetTokens.userId,
+                    userId,
+                ),
+            );
+    }
+
+    async findPasswordResetToken(
+        tokenHash: string,
+    ) {
+        const result = await this.db
+            .select()
+            .from(passwordResetTokens)
+            .where(
+                eq(
+                    passwordResetTokens.tokenHash,
+                    tokenHash,
+                ),
+            );
+
+        return result[0] ?? null;
+    }
+
+    async deletePasswordResetToken(
+        tokenHash: string,
+    ) {
+        return this.db
+            .delete(passwordResetTokens)
+            .where(
+                eq(
+                    passwordResetTokens.tokenHash,
+                    tokenHash,
+                ),
+            );
+    }
 
 
+    async updateProfile(
+        uid: string,
+        data: {
+            firstName?: string;
+            lastName?: string;
+            mobileNumber?: string;
+        },
+    ) {
+        const [user] = await this.db
+            .update(users)
+            .set({
+                ...data,
+                updatedAt: new Date(),
+            })
+            .where(eq(users.uid, uid))
+            .returning({
+                uid: users.uid,
+                firstName: users.firstName,
+                lastName: users.lastName,
+                email: users.email,
+                mobileNumber: users.mobileNumber,
+                avatarUrl: users.avatarUrl,
+            });
 
+        return user ?? null;
+    }
 
 
 }

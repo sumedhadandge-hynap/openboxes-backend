@@ -54,6 +54,32 @@ async function seedAdmin() {
     console.log('Admin user already exists');
   }
 
+  // Seed test user javatam988@ocuser.com
+  const testEmail = 'javatam988@ocuser.com';
+  const [existingTestUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, testEmail))
+    .limit(1);
+
+  if (!existingTestUser) {
+    const passwordHash = await bcrypt.hash(
+      adminPassword, // Use the same default password ChangeMe123!
+      BCRYPT_SALT_ROUNDS,
+    );
+
+    await db.insert(users).values({
+      firstName: 'Java',
+      lastName: 'Tam',
+      email: testEmail,
+      passwordHash,
+    });
+
+    console.log('Test user javatam988@ocuser.com created');
+  } else {
+    console.log('Test user javatam988@ocuser.com already exists');
+  }
+
   await client.end();
 }
 

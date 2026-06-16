@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { AuthRepository } from './auth.repository';
 
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
@@ -19,12 +20,19 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.getOrThrow('jwt.accessSecret'),
+        secret: config.getOrThrow(
+          'jwt.accessSecret',
+        ),
         signOptions: {
-          expiresIn: config.getOrThrow('jwt.accessExpiresIn'),
+          expiresIn:
+            config.getOrThrow(
+              'jwt.accessExpiresIn',
+            ),
         },
       }),
     }),
+
+    MailModule,
   ],
 
   controllers: [AuthController],

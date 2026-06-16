@@ -4,10 +4,10 @@ import {
   MinLength,
 } from 'class-validator';
 
-export class ChangePasswordDto {
+export class ResetPasswordDto {
   @IsString()
   @IsNotEmpty()
-  currentPassword: string;
+  token: string;
 
   @IsString()
   @MinLength(8)

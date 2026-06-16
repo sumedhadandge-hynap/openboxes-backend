@@ -18,6 +18,10 @@ export const users = pgTable(
     email: text('email').notNull(),
 
     passwordHash: text('password_hash').notNull(),
+
+    mobileNumber: text('mobile_number'),
+
+    avatarUrl: text('avatar_url'),
   },
   (table) => ({
     usersUidUnique: uniqueIndex(

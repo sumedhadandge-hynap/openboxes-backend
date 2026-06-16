@@ -6,11 +6,17 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 
 import * as bcrypt from 'bcrypt';
+import * as Crypto from 'crypto';
 
 import { AuthRepository } from './auth.repository';
 
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { MailService } from '../mail/mail.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
@@ -18,6 +24,7 @@ export class AuthService {
         private readonly authRepository: AuthRepository,
         private readonly jwtService: JwtService,
         private readonly configService: ConfigService,
+        private readonly mailService: MailService,
     ) { }
 
     private getJwtExpiresIn(
@@ -28,10 +35,8 @@ export class AuthService {
         ) as JwtSignOptions['expiresIn'];
     }
 
-    // =====================================================
-    // LOGIN
-    // =====================================================
 
+    // LOGIN
     async login(dto: LoginDto) {
         const user =
             await this.authRepository.findUserByEmail(
@@ -144,12 +149,7 @@ export class AuthService {
         };
     }
 
-
-
-    // =====================================================
     // REFRESH TOKEN
-    // =====================================================
-
     async refresh(
         dto: RefreshTokenDto,
     ) {
@@ -293,10 +293,7 @@ export class AuthService {
         };
     }
 
-    // =====================================================
     // LOGOUT
-    // =====================================================
-
     async logout(
         dto: RefreshTokenDto,
     ) {
@@ -337,8 +334,7 @@ export class AuthService {
     }
 
 
-
-
+    // Current User
     async me(userUid: string) {
         const user =
             await this.authRepository.findUserByUid(
@@ -380,19 +376,247 @@ export class AuthService {
 
 
 
+    async changePassword(
+        uid: string,
+        dto: ChangePasswordDto,
+    ) {
+        const user =
+            await this.authRepository.findUserByUid(
+                uid,
+            );
+
+        if (!user) {
+            throw new UnauthorizedException(
+                'User not found',
+            );
+        }
+
+        const validPassword =
+            await bcrypt.compare(
+                dto.currentPassword,
+                user.passwordHash,
+            );
+
+        if (!validPassword) {
+            throw new UnauthorizedException(
+                'Current password is incorrect',
+            );
+        }
+
+        if (
+            dto.currentPassword ===
+            dto.newPassword
+        ) {
+            throw new UnauthorizedException(
+                'New password must be different from current password',
+            );
+        }
+
+        const passwordHash =
+            await bcrypt.hash(
+                dto.newPassword,
+                10,
+            );
+
+        await this.authRepository.updatePassword(
+            uid,
+            passwordHash,
+        );
+
+        // Logout from all devices by removing all refresh tokens
+        const tokens =
+            await this.authRepository.findRefreshTokensByUser(
+                user.id,
+            );
+
+        for (const token of tokens) {
+            await this.authRepository.deleteRefreshToken(
+                token.tokenHash,
+            );
+        }
+
+        return {
+            message:
+                'Password changed successfully. Please login again.',
+        };
+    }
 
 
 
 
+    async forgotPassword(
+        dto: ForgotPasswordDto,
+    ) {
+        const user =
+            await this.authRepository.findUserByEmail(
+                dto.email,
+            );
+
+        // Never reveal whether the email exists
+        if (!user) {
+            return {
+                message:
+                    'If the email exists, a password reset link has been sent.',
+            };
+        }
+
+        // Generate secure random token
+        const resetToken =
+            `${user.email}:${Crypto.randomBytes(32).toString('hex')}`;
+
+
+        // Hash token before storing
+        const tokenHash =
+            await bcrypt.hash(
+                resetToken,
+                10,
+            );
+
+        // Remove any existing reset tokens
+        const existingTokens =
+            await this.authRepository.findPasswordResetTokensByUser(
+                user.id,
+            );
+
+        for (const token of existingTokens) {
+            await this.authRepository.deletePasswordResetToken(
+                token.tokenHash,
+            );
+        }
+
+        // Token expires in 30 minutes
+        const expiresAt = new Date();
+
+        expiresAt.setMinutes(
+            expiresAt.getMinutes() + 30,
+        );
+
+        await this.authRepository.createPasswordResetToken(
+            user.id,
+            tokenHash,
+            expiresAt,
+        );
+
+        const frontendUrl =
+            this.configService.getOrThrow<string>(
+                'FRONTEND_URL',
+            );
+
+        const resetLink =
+            `${frontendUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+        await this.mailService.sendPasswordResetEmail(
+            user.email,
+            user.firstName,
+            resetLink,
+        );
+
+        return {
+            message:
+                'If the email exists, a password reset link has been sent.',
+        };
+    }
 
 
 
+    async resetPassword(
+        dto: ResetPasswordDto,
+    ) {
+        // Decode the token to identify the user
+        const user = await this.authRepository.findUserByEmail(
+            dto.token.split(':')[0],
+        );
+
+        if (!user) {
+            throw new UnauthorizedException(
+                'Invalid reset token',
+            );
+        }
+
+        const storedTokens =
+            await this.authRepository.findPasswordResetTokensByUser(
+                user.id,
+            );
+
+        let matchedToken:
+            Awaited<
+                ReturnType<
+                    AuthRepository['findPasswordResetTokensByUser']
+                >
+            >[number] | null = null;
+
+        for (const token of storedTokens) {
+            const valid = await bcrypt.compare(
+                dto.token,
+                token.tokenHash,
+            );
+
+            if (valid) {
+                matchedToken = token;
+                break;
+            }
+        }
+
+        if (!matchedToken) {
+            throw new UnauthorizedException(
+                'Invalid reset token',
+            );
+        }
+
+        if (matchedToken.expiresAt < new Date()) {
+            throw new UnauthorizedException(
+                'Reset token expired',
+            );
+        }
+
+        const passwordHash =
+            await bcrypt.hash(
+                dto.newPassword,
+                10,
+            );
+
+        await this.authRepository.updatePassword(
+            user.uid,
+            passwordHash,
+        );
+
+        await this.authRepository.deletePasswordResetToken(
+            matchedToken.tokenHash,
+        );
+
+        return {
+            message:
+                'Password reset successfully',
+        };
+    }
 
 
 
+    async updateProfile(
+        userUid: string,
+        dto: UpdateProfileDto,
+    ) {
+        const user =
+            await this.authRepository.findUserByUid(
+                userUid,
+            );
 
+        if (!user) {
+            throw new UnauthorizedException(
+                'User not found',
+            );
+        }
 
+        const updatedUser =
+            await this.authRepository.updateProfile(
+                userUid,
+                dto,
+            );
 
-
+        return {
+            message: 'Profile updated successfully',
+            data: updatedUser,
+        };
+    }
 
 }
